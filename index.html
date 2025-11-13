@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>NudgeLearn+ 完全版</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font-family:"Segoe UI",sans-serif;background:linear-gradient(180deg,#eaf6ff,#ffffff);margin:0;padding:20px;color:#0b2545}
+  h1{color:#1a73e8;margin:0}
+  .subtitle{color:#35517a;margin-bottom:12px}
+  .container{max-width:980px;margin:0 auto;display:grid;grid-template-columns:1fr 380px;gap:20px}
+  .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(15,40,80,0.06)}
+  .option{display:inline-block;padding:8px 12px;border-radius:10px;border:1px solid #cddff3;margin:6px;cursor:pointer}
+  .option.selected{background:#e8f4ff;border-color:#1a73e8}
+  button{background:#1a73e8;color:#fff;border:none;padding:10px 12px;border-radius:10px;cursor:pointer}
+  button.ghost{background:#fff;color:#1a73e8;border:1px solid #d6e8ff}
+  .stats{display:flex;justify-content:space-between;gap:8px}
+  .stat{flex:1;background:#f6fbff;padding:10px;border-radius:8px;text-align:center}
+  .leaderboard li{margin:6px 0}
+  .mission{background:#fef9ec;border:1px solid #ffefc0;padding:10px;border-radius:8px}
+  .message{background:#eefaf1;border:1px solid #dff4e9;padding:10px;border-radius:8px;margin-top:8px}
+  input[type=text]{padding:8px;border-radius:8px;border:1px solid #cddff3;width:100%}
+  .flex{display:flex;gap:8px}
+  @media(max-width:900px){ .container{grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>📘 NudgeLearn＋（完全版）</h1>
+<p class="subtitle">行動経済学 × AI × 共通テスト対策 — 続けたくなる学びをデザイン</p>
+
+<div class="container">
+  <!-- 左カラム -->
+  <div>
+    <!-- ユーザー名 -->
+    <div class="card" id="userCard">
+      <div class="flex">
+        <input type="text" id="playerName" placeholder="ユーザー名を入力" style="flex:1">
+        <button onclick="saveName()">保存</button>
+      </div>
+      <small>※名前はローカルにのみ保存されます。</small>
+    </div>
+
+    <!-- AIおすすめ -->
+    <div class="card">
+      <h3>AIおすすめ（弱点優先）</h3>
+      <div id="aiSuggestion" style="font-weight:700;color:#1a73e8;margin-bottom:8px"></div>
+      <div id="subjects"></div>
+      <p id="subjectText"><small>選択中の教科：<b>未選択</b></small></p>
+      <div class="flex" style="margin-top:8px">
+        <button onclick="startLearning()">今日も学習！</button>
+        <button class="ghost" onclick="startReview()">復習モード</button>
+      </div>
+    </div>
+
+    <!-- ミッション -->
+    <div class="card">
+      <h3>デイリーミッション</h3>
+      <div id="missionBox" class="mission"></div>
+      <div id="systemMessage" class="message" style="display:none"></div>
+    </div>
+
+    <!-- ダッシュボード -->
+    <div class="card">
+      <h3>ダッシュボード</h3>
+      <div class="stats">
+        <div class="stat"><div>解答数</div><div id="totalSolved">0</div></div>
+        <div class="stat"><div>XP</div><div id="xp">0</div></div>
+        <div class="stat"><div>Lv.</div><div id="level">1</div></div>
+      </div>
+      <p style="margin-top:8px">連続学習：<b id="streak">0</b>日 ／ 称号：<b id="badge">初心者</b></p>
+      <div style="margin-top:8px">
+        <button onclick="showDashboard()">更新</button>
+      </div>
+    </div>
+
+    <!-- 初期化 -->
+    <div class="card">
+      <h3>設定・初期化</h3>
+      <p><small>「学習記録のみ初期化」で1日目から再スタートできます。</small></p>
+      <div class="flex" style="margin-bottom:8px">
+        <button onclick="resetLearningData()">学習記録を初期化（1日目に戻す）</button>
+      </div>
+      <hr>
+      <p><small>全てのデータを消す場合はこちら</small></p>
+      <div class="flex">
+        <button class="ghost" onclick="confirmReset()">アプリ全体を初期化</button>
+        <button class="ghost" onclick="exportData()">データ保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右カラム -->
+  <div>
+    <div class="card">
+      <h3>科目別成績</h3>
+      <div id="subjectStats"></div>
+    </div>
+    <div class="card">
+      <h3>リーダーボード</h3>
+      <ol id="leaderboard"></ol>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUBJECTS=["国語","数学","英語","理科","社会"];
+let selectedSubject="",playerName=localStorage.getItem("playerName")||"",streak=parseInt(localStorage.getItem("streak")||0),totalSolved=parseInt(localStorage.getItem("totalSolved")||0),xp=parseInt(localStorage.getItem("xp")||0),level=parseInt(localStorage.getItem("level")||1);
+
+document.getElementById("playerName").value=playerName;
+
+function saveName(){playerName=document.getElementById("playerName").value.trim()||"名無し";localStorage.setItem("playerName",playerName);showMessage("ユーザー名を保存しました。");updateLeaderboardRecord();}
+
+/* AIおすすめ */
+function getStats(sub){const d=JSON.parse(localStorage.getItem("stats_"+sub))||{solved:0,correct:0};const r=d.solved?d.correct/d.solved:0;return{solved:d.solved,correct:d.correct,rate:r};}
+function suggest(){const arr=SUBJECTS.map(s=>{const st=getStats(s);const w=(1-st.rate)*0.7+(1/(st.solved+1))*0.3;return{name:s,weight:w,rate:st.rate,solved:st.solved};}).sort((a,b)=>b.weight-a.weight);
+document.getElementById("aiSuggestion").textContent=`👉 今日のおすすめは「${arr[0].name}」です`;
+const cont=document.getElementById("subjects");cont.innerHTML="";arr.forEach(it=>{const d=document.createElement("div");d.className="option";d.textContent=`${it.name}（${Math.round(it.rate*100)}% / ${it.solved}問）`;d.onclick=()=>selectSubject(d,it.name);cont.appendChild(d);});}
+
+/* 科目選択 */
+function selectSubject(el,sub){document.querySelectorAll(".option").forEach(o=>o.classList.remove("selected"));el.classList.add("selected");selectedSubject=sub;document.getElementById("subjectText").innerHTML=`選択中の教科：<b>${sub}</b>`;}
+
+/* 学習開始 */
+function startLearning(){if(!selectedSubject)return alert("教科を選んでください！");streak++;localStorage.setItem("streak",streak);updateBadge();window.open(`study.html?subject=${encodeURIComponent(selectedSubject)}&mode=normal`,"_blank");}
+function startReview(){if(!selectedSubject)return alert("教科を選んでください！");window.open(`study.html?subject=${encodeURIComponent(selectedSubject)}&mode=review`,"_blank");}
+
+/* バッジ・XP */
+function updateBadge(){const b=streak<3?"初心者":streak<7?"継続学習者":streak<14?"上級継続者":"努力王🔥";document.getElementById("badge").textContent=b;}
+function addXP(n){xp=parseInt(localStorage.getItem("xp")||0)+n;localStorage.setItem("xp",xp);level=Math.floor(xp/100)+1;localStorage.setItem("level",level);showDashboard();}
+
+/* ダッシュボード */
+function showDashboard(){totalSolved=parseInt(localStorage.getItem("totalSolved")||0);xp=parseInt(localStorage.getItem("xp")||0);level=parseInt(localStorage.getItem("level")||1);streak=parseInt(localStorage.getItem("streak")||0);
+document.getElementById("totalSolved").textContent=totalSolved;document.getElementById("xp").textContent=xp;document.getElementById("level").textContent=level;document.getElementById("streak").textContent=streak;updateBadge();renderSubjectStats();renderLeaderboard();}
+
+/* 科目別統計 */
+function renderSubjectStats(){const c=document.getElementById("subjectStats");c.innerHTML="";SUBJECTS.forEach(s=>{const st=getStats(s);c.innerHTML+=`<div>${s}：${Math.round(st.rate*100)}%（${st.solved}問）</div>`;});}
+
+/* リーダーボード */
+function updateLeaderboardRecord(){const n=localStorage.getItem("playerName")||"名無し";const lb=JSON.parse(localStorage.getItem("leaderboard")||"[]");const idx=lb.findIndex(i=>i.name===n);const t=parseInt(localStorage.getItem("totalSolved")||0);if(idx>=0)lb[idx].score=t;else lb.push({name:n,score:t});lb.sort((a,b)=>b.score-a.score);localStorage.setItem("leaderboard",JSON.stringify(lb));}
+function renderLeaderboard(){const lb=JSON.parse(localStorage.getItem("leaderboard")||"[]");document.getElementById("leaderboard").innerHTML=lb.slice(0,10).map(i=>`<li>${i.name} — ${i.score}問</li>`).join("");}
+
+/* 学習記録のみ初期化 */
+function resetLearningData(){if(!confirm("学習記録をリセットして1日目からやり直しますか？"))return;localStorage.setItem("streak",0);localStorage.setItem("xp",0);localStorage.setItem("level",1);localStorage.setItem("totalSolved",0);for(const s of SUBJECTS){localStorage.removeItem("stats_"+s);localStorage.removeItem("wrong_"+s);}streak=xp=totalSolved=0;level=1;updateBadge();showDashboard();suggest();showMessage("✅ 学習記録を初期化しました。今日が新しい1日目です！");}
+
+/* 全データ初期化 */
+function confirmReset(){if(!confirm("アプリ全体を初期化しますか？"))return;localStorage.clear();location.reload();}
+
+/* 便利系 */
+function showMessage(msg){const el=document.getElementById("systemMessage");el.style.display="block";el.textContent=msg;setTimeout(()=>el.style.display="none",4000);}
+function exportData(){const data=JSON.stringify(localStorage);const blob=new Blob([data],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="nudgelearn_data.json";a.click();URL.revokeObjectURL(url);showMessage("データを保存しました。");}
+
+/* 初期化 */
+suggest();showDashboard();updateLeaderboardRecord();renderLeaderboard();
+</script>
+</body>
+</html>
